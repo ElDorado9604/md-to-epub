@@ -6,6 +6,7 @@ export interface MarkdownToEpubOptions {
   title: string;
   author?: string;
   language?: string;
+  coverColor?: string;
 }
 
 export async function markdownToEpub(
@@ -19,7 +20,6 @@ export async function markdownToEpub(
 
   const rawHtml = await marked.parse(markdown);
 
-  // Basic cleanup for XHTML friendliness
   const html = rawHtml
     .replace(/<br>/g, '<br/>')
     .replace(/<hr>/g, '<hr/>')
@@ -98,10 +98,10 @@ ${html}
 </body>
 </html>`;
 
-  // Generate cover image with title + author
   const coverImage = await generateCoverImage(
     options.title,
-    options.author
+    options.author,
+    options.coverColor || '#1a5c3a'
   );
 
   return buildEpubBlob({

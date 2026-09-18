@@ -1,10 +1,20 @@
 import { useState, useRef } from 'react';
 import { markdownToEpub } from './converter';
 
+const COVER_PRESETS = [
+  { name: 'Green', value: '#1a5c3a' },
+  { name: 'Blue', value: '#1e3a5f' },
+  { name: 'Purple', value: '#4a1d6a' },
+  { name: 'Red', value: '#6b1e1e' },
+  { name: 'Teal', value: '#0d4f4f' },
+  { name: 'Slate', value: '#2d3748' },
+];
+
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
+  const [coverColor, setCoverColor] = useState('#1a5c3a');
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState('book.epub');
   const [converting, setConverting] = useState(false);
@@ -36,6 +46,7 @@ export default function App() {
         title: bookTitle,
         author: author.trim() || undefined,
         language: 'en',
+        coverColor,
       });
 
       const url = URL.createObjectURL(blob);
@@ -111,7 +122,7 @@ export default function App() {
         />
       </div>
 
-      <div style={{ marginBottom: 24 }}>
+      <div style={{ marginBottom: 16 }}>
         <label
           style={{
             display: 'block',
@@ -136,6 +147,65 @@ export default function App() {
             boxSizing: 'border-box',
           }}
         />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <label
+          style={{
+            display: 'block',
+            fontSize: 14,
+            fontWeight: 500,
+            marginBottom: 8,
+          }}
+        >
+          Cover color
+        </label>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {COVER_PRESETS.map((preset) => (
+            <button
+              key={preset.value}
+              type="button"
+              title={preset.name}
+              onClick={() => setCoverColor(preset.value)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: preset.value,
+                border:
+                  coverColor === preset.value
+                    ? '3px solid #2563eb'
+                    : '2px solid #ddd',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            />
+          ))}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 13,
+              color: '#555',
+            }}
+          >
+            Custom
+            <input
+              type="color"
+              value={coverColor}
+              onChange={(e) => setCoverColor(e.target.value)}
+              style={{
+                width: 36,
+                height: 36,
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                background: 'transparent',
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       <button
