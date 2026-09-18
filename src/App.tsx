@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { markdownToEpub } from './converter';
+import { generateCoverImage } from './cover';
 
 const COVER_PRESETS = [
   { name: 'Green', value: '#1a5c3a' },
@@ -8,6 +9,8 @@ const COVER_PRESETS = [
   { name: 'Red', value: '#6b1e1e' },
   { name: 'Teal', value: '#0d4f4f' },
   { name: 'Slate', value: '#2d3748' },
+  { name: 'Yellow', value: '#b8860b' },
+  { name: 'Black', value: '#1a1a1a' },
 ];
 
 export default function App() {
@@ -15,10 +18,16 @@ export default function App() {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [coverColor, setCoverColor] = useState('#1a5c3a');
+  const [titleColor, setTitleColor] = useState('#ffffff');
+  const [authorColor, setAuthorColor] = useState('#ffffff');
+  const [titleFontSize, setTitleFontSize] = useState(48);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState('book.epub');
   const [converting, setConverting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,6 +40,38 @@ export default function App() {
       setTitle(name);
     }
   };
+
+  const handlePreview = async () => {
+    setPreviewLoading(true);
+    setShowPreview(true);
+    try {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      const blob = await generateCoverImage(
+        title.trim() || 'Untitled',
+        author.trim() || undefined,
+        coverColor,
+        titleColor,
+        authorColor,
+        titleFontSize
+      );
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+    } catch {
+      setError('Failed to generate preview');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Refresh preview when options change while open
+  useEffect(() => {
+    if (!showPreview) return;
+    const t = setTimeout(() => {
+      handlePreview();
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, author, coverColor, titleColor, authorColor, titleFontSize]);
 
   const handleConvert = async () => {
     if (!file) return;
@@ -47,6 +88,9 @@ export default function App() {
         author: author.trim() || undefined,
         language: 'en',
         coverColor,
+        titleColor,
+        authorColor,
+        titleFontSize,
       });
 
       const url = URL.createObjectURL(blob);
@@ -61,13 +105,29 @@ export default function App() {
     }
   };
 
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontSize: 14,
+    fontWeight: 500,
+    marginBottom: 6,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: 14,
+    border: '1px solid #ccc',
+    borderRadius: 6,
+    boxSizing: 'border-box',
+  };
+
   return (
     <div
       style={{
         fontFamily: 'system-ui, -apple-system, sans-serif',
         maxWidth: 480,
         margin: '40px auto',
-        padding: '0 16px',
+        padding: '0 16px 40px',
         color: '#1a1a1a',
       }}
     >
@@ -76,16 +136,7 @@ export default function App() {
       </h1>
 
       <div style={{ marginBottom: 16 }}>
-        <label
-          style={{
-            display: 'block',
-            fontSize: 14,
-            fontWeight: 500,
-            marginBottom: 6,
-          }}
-        >
-          Markdown file
-        </label>
+        <label style={labelStyle}>Markdown file</label>
         <input
           ref={inputRef}
           type="file"
@@ -96,71 +147,31 @@ export default function App() {
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <label
-          style={{
-            display: 'block',
-            fontSize: 14,
-            fontWeight: 500,
-            marginBottom: 6,
-          }}
-        >
-          Title (optional)
-        </label>
+        <label style={labelStyle}>Title (optional)</label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Book title"
-          style={{
-            width: '100%',
-            padding: '8px 10px',
-            fontSize: 14,
-            border: '1px solid #ccc',
-            borderRadius: 6,
-            boxSizing: 'border-box',
-          }}
+          style={inputStyle}
         />
       </div>
 
       <div style={{ marginBottom: 16 }}>
-        <label
-          style={{
-            display: 'block',
-            fontSize: 14,
-            fontWeight: 500,
-            marginBottom: 6,
-          }}
-        >
-          Author (optional)
-        </label>
+        <label style={labelStyle}>Author (optional)</label>
         <input
           type="text"
           value={author}
           onChange={(e) => setAuthor(e.target.value)}
           placeholder="Author name"
-          style={{
-            width: '100%',
-            padding: '8px 10px',
-            fontSize: 14,
-            border: '1px solid #ccc',
-            borderRadius: 6,
-            boxSizing: 'border-box',
-          }}
+          style={inputStyle}
         />
       </div>
 
-      <div style={{ marginBottom: 24 }}>
-        <label
-          style={{
-            display: 'block',
-            fontSize: 14,
-            fontWeight: 500,
-            marginBottom: 8,
-          }}
-        >
-          Cover color
-        </label>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Cover color */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ ...labelStyle, marginBottom: 8 }}>Cover color</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           {COVER_PRESETS.map((preset) => (
             <button
               key={preset.value}
@@ -168,9 +179,9 @@ export default function App() {
               title={preset.name}
               onClick={() => setCoverColor(preset.value)}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
+                width: 32,
+                height: 32,
+                borderRadius: 6,
                 background: preset.value,
                 border:
                   coverColor === preset.value
@@ -181,31 +192,79 @@ export default function App() {
               }}
             />
           ))}
-          <label
+          <input
+            type="color"
+            value={coverColor}
+            onChange={(e) => setCoverColor(e.target.value)}
+            title="Custom cover color"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              color: '#555',
+              width: 32,
+              height: 32,
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              background: 'transparent',
             }}
-          >
-            Custom
-            <input
-              type="color"
-              value={coverColor}
-              onChange={(e) => setCoverColor(e.target.value)}
-              style={{
-                width: 36,
-                height: 36,
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                background: 'transparent',
-              }}
-            />
-          </label>
+          />
         </div>
+      </div>
+
+      {/* Title & Author text colors */}
+      <div style={{ marginBottom: 16, display: 'flex', gap: 24 }}>
+        <div>
+          <label style={labelStyle}>Title color</label>
+          <input
+            type="color"
+            value={titleColor}
+            onChange={(e) => setTitleColor(e.target.value)}
+            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer' }}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>Author color</label>
+          <input
+            type="color"
+            value={authorColor}
+            onChange={(e) => setAuthorColor(e.target.value)}
+            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer' }}
+          />
+        </div>
+      </div>
+
+      {/* Font size */}
+      <div style={{ marginBottom: 20 }}>
+        <label style={labelStyle}>
+          Title font size: {titleFontSize}px
+        </label>
+        <input
+          type="range"
+          min={28}
+          max={72}
+          step={2}
+          value={titleFontSize}
+          onChange={(e) => setTitleFontSize(Number(e.target.value))}
+          style={{ width: '100%' }}
+        />
+      </div>
+
+      {/* Preview button */}
+      <div style={{ marginBottom: 16 }}>
+        <button
+          type="button"
+          onClick={handlePreview}
+          style={{
+            padding: '8px 16px',
+            fontSize: 13,
+            fontWeight: 500,
+            background: '#f3f4f6',
+            color: '#1a1a1a',
+            border: '1px solid #d1d5db',
+            borderRadius: 6,
+            cursor: 'pointer',
+          }}
+        >
+          Preview cover
+        </button>
       </div>
 
       <button
@@ -243,6 +302,77 @@ export default function App() {
             Download EPUB
           </a>
         </p>
+      )}
+
+      {/* Preview modal */}
+      {showPreview && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => setShowPreview(false)}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 12,
+              padding: 20,
+              maxWidth: 340,
+              width: '100%',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+              }}
+            >
+              <strong style={{ fontSize: 15 }}>Cover preview</strong>
+              <button
+                type="button"
+                onClick={() => setShowPreview(false)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  fontSize: 20,
+                  cursor: 'pointer',
+                  lineHeight: 1,
+                  color: '#666',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            {previewLoading && (
+              <p style={{ textAlign: 'center', color: '#666', fontSize: 14 }}>
+                Generating…
+              </p>
+            )}
+            {previewUrl && !previewLoading && (
+              <img
+                src={previewUrl}
+                alt="Cover preview"
+                style={{
+                  width: '100%',
+                  borderRadius: 6,
+                  display: 'block',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                }}
+              />
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

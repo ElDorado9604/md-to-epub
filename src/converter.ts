@@ -7,6 +7,9 @@ export interface MarkdownToEpubOptions {
   author?: string;
   language?: string;
   coverColor?: string;
+  titleColor?: string;
+  authorColor?: string;
+  titleFontSize?: number;
 }
 
 export async function markdownToEpub(
@@ -101,7 +104,10 @@ ${html}
   const coverImage = await generateCoverImage(
     options.title,
     options.author,
-    options.coverColor || '#1a5c3a'
+    options.coverColor || '#1a5c3a',
+    options.titleColor || '#ffffff',
+    options.authorColor || '#ffffff',
+    options.titleFontSize || 48
   );
 
   return buildEpubBlob({

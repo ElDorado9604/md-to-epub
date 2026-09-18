@@ -1,7 +1,11 @@
 /** Generate a simple cover image (PNG) with title and optional author using Canvas */
 
 function darken(hex: string, amount: number): string {
-  const num = parseInt(hex.replace('#', ''), 16);
+  const cleaned = hex.replace('#', '');
+  const num = parseInt(cleaned.length === 3
+    ? cleaned.split('').map((c) => c + c).join('')
+    : cleaned, 16);
+  if (Number.isNaN(num)) return '#0a0a0a';
   const r = Math.max(0, (num >> 16) - amount);
   const g = Math.max(0, ((num >> 8) & 0x00ff) - amount);
   const b = Math.max(0, (num & 0x0000ff) - amount);
@@ -11,7 +15,10 @@ function darken(hex: string, amount: number): string {
 export async function generateCoverImage(
   title: string,
   author?: string,
-  baseColor: string = '#1a5c3a'
+  baseColor: string = '#1a5c3a',
+  titleColor: string = '#ffffff',
+  authorColor: string = '#ffffff',
+  titleFontSize: number = 48
 ): Promise<Blob> {
   const width = 800;
   const height = 1200;
@@ -30,6 +37,7 @@ export async function generateCoverImage(
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
+  // Borders
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
   ctx.lineWidth = 8;
   ctx.strokeRect(24, 24, width - 48, height - 48);
@@ -38,36 +46,42 @@ export async function generateCoverImage(
   ctx.lineWidth = 2;
   ctx.strokeRect(40, 40, width - 80, height - 80);
 
-  ctx.fillStyle = '#ffffff';
+  // Title
+  ctx.fillStyle = titleColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
   const maxWidth = width - 120;
-  const titleFontSize = fitText(ctx, title, maxWidth, 56, 32);
-  ctx.font = `bold ${titleFontSize}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const size = Math.min(Math.max(titleFontSize, 28), 72);
+  ctx.font = `bold ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
 
-  const titleLines = wrapText(ctx, title, maxWidth);
-  const titleBlockHeight = titleLines.length * (titleFontSize * 1.25);
+  const titleLines = wrapText(ctx, title || 'Untitled', maxWidth);
+  const lineHeight = size * 1.25;
+  const titleBlockHeight = titleLines.length * lineHeight;
   let y = height * 0.38 - titleBlockHeight / 2;
 
   for (const line of titleLines) {
     ctx.fillText(line, width / 2, y);
-    y += titleFontSize * 1.25;
+    y += lineHeight;
   }
 
+  // Author
   if (author && author.trim()) {
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    const authorSize = 28;
+    ctx.fillStyle = authorColor;
+    const authorSize = Math.max(20, Math.round(size * 0.55));
     ctx.font = `${authorSize}px system-ui, -apple-system, "Segoe UI", sans-serif`;
     const authorY = height * 0.72;
     ctx.fillText(author.trim(), width / 2, authorY);
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    // Decorative line
+    ctx.strokeStyle = authorColor;
+    ctx.globalAlpha = 0.4;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(width / 2 - 60, height * 0.72 - 36);
     ctx.lineTo(width / 2 + 60, height * 0.72 - 36);
     ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   return new Promise((resolve, reject) => {
@@ -80,22 +94,6 @@ export async function generateCoverImage(
       0.92
     );
   });
-}
-
-function fitText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-  maxSize: number,
-  minSize: number
-): number {
-  let size = maxSize;
-  while (size > minSize) {
-    ctx.font = `bold ${size}px system-ui, -apple-system, sans-serif`;
-    if (ctx.measureText(text).width <= maxWidth * 1.8) return size;
-    size -= 2;
-  }
-  return minSize;
 }
 
 function wrapText(
