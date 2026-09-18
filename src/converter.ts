@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import { buildEpubBlob } from './epubBuilder';
+import { generateCoverImage } from './cover';
 
 export interface MarkdownToEpubOptions {
   title: string;
@@ -11,7 +12,6 @@ export async function markdownToEpub(
   markdown: string,
   options: MarkdownToEpubOptions
 ): Promise<Blob> {
-  // Configure marked for cleaner output
   marked.setOptions({
     gfm: true,
     breaks: false,
@@ -19,7 +19,7 @@ export async function markdownToEpub(
 
   const rawHtml = await marked.parse(markdown);
 
-  // Basic cleanup to make the HTML more XHTML-friendly
+  // Basic cleanup for XHTML friendliness
   const html = rawHtml
     .replace(/<br>/g, '<br/>')
     .replace(/<hr>/g, '<hr/>')
@@ -98,12 +98,19 @@ ${html}
 </body>
 </html>`;
 
+  // Generate cover image with title + author
+  const coverImage = await generateCoverImage(
+    options.title,
+    options.author
+  );
+
   return buildEpubBlob({
     title: options.title,
     author: options.author,
     language: lang,
     chapterFileName: 'chapter1.xhtml',
     chapterContent,
+    coverImage,
   });
 }
 

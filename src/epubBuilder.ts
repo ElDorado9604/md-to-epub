@@ -6,6 +6,7 @@ export interface EpubData {
   language?: string;
   chapterFileName: string;
   chapterContent: string;
+  coverImage?: Blob;
 }
 
 function escapeXml(str: string): string {
@@ -48,12 +49,33 @@ export async function buildEpubBlob(data: EpubData): Promise<Blob> {
 </container>`
   );
 
+  // Cover image (if provided)
+  const hasCover = !!data.coverImage;
+  if (hasCover && data.coverImage) {
+    const coverBuffer = await data.coverImage.arrayBuffer();
+    zip.file('OEBPS/cover.png', coverBuffer);
+  }
+
   // 3. content.opf (EPUB 3)
   const creatorMeta = author
     ? `    <dc:creator id="creator">${author}</dc:creator>
     <meta refines="#creator" property="role" scheme="marc:relators">aut</meta>
 `
     : '';
+
+  const coverMeta = hasCover
+    ? `    <meta name="cover" content="cover-image"/>
+`
+    : '';
+
+  const coverManifest = hasCover
+    ? `    <item id="cover-image" href="cover.png" media-type="image/png" properties="cover-image"/>
+    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>
+`
+    : '';
+
+  const coverSpine = hasCover ? `    <itemref idref="cover" linear="yes"/>
+` : '';
 
   zip.file(
     'OEBPS/content.opf',
@@ -66,20 +88,42 @@ export async function buildEpubBlob(data: EpubData): Promise<Blob> {
     <dc:identifier id="BookId">urn:uuid:${uuid}</dc:identifier>
     <dc:title>${title}</dc:title>
     <dc:language>${lang}</dc:language>
-${creatorMeta}    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta>
+${creatorMeta}${coverMeta}    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta>
   </metadata>
   <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+${coverManifest}    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
     <item id="chapter1" href="${chapterFileName}" media-type="application/xhtml+xml"/>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
   </manifest>
   <spine toc="ncx">
-    <itemref idref="chapter1"/>
+${coverSpine}    <itemref idref="chapter1"/>
   </spine>
 </package>`
   );
 
-  // 4. Navigation document (required for good EPUB 3 / Apple Books support)
+  // Cover page XHTML (shows the image)
+  if (hasCover) {
+    zip.file(
+      'OEBPS/cover.xhtml',
+      `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${lang}" lang="${lang}">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Cover</title>
+  <style type="text/css">
+    body { margin: 0; padding: 0; text-align: center; }
+    img { max-width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <img src="cover.png" alt="${title}"/>
+</body>
+</html>`
+    );
+  }
+
+  // 4. Navigation document
   zip.file(
     'OEBPS/nav.xhtml',
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -105,7 +149,7 @@ ${creatorMeta}    <meta property="dcterms:modified">${new Date().toISOString().r
   // 5. Chapter XHTML
   zip.file(`OEBPS/${chapterFileName}`, data.chapterContent);
 
-  // 6. toc.ncx (EPUB 2 compatibility)
+  // 6. toc.ncx
   zip.file(
     'OEBPS/toc.ncx',
     `<?xml version="1.0" encoding="UTF-8"?>
