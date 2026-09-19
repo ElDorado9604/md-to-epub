@@ -2,9 +2,15 @@
 
 function darken(hex: string, amount: number): string {
   const cleaned = hex.replace('#', '');
-  const num = parseInt(cleaned.length === 3
-    ? cleaned.split('').map((c) => c + c).join('')
-    : cleaned, 16);
+  const num = parseInt(
+    cleaned.length === 3
+      ? cleaned
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : cleaned,
+    16
+  );
   if (Number.isNaN(num)) return '#0a0a0a';
   const r = Math.max(0, (num >> 16) - amount);
   const g = Math.max(0, ((num >> 8) & 0x00ff) - amount);
@@ -46,40 +52,83 @@ export async function generateCoverImage(
   ctx.lineWidth = 2;
   ctx.strokeRect(40, 40, width - 80, height - 80);
 
+  // Safe text area (inside inner border)
+  const paddingX = 70;
+  const maxTextWidth = width - paddingX * 2;
+
   // Title
   ctx.fillStyle = titleColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const maxWidth = width - 120;
-  const size = Math.min(Math.max(titleFontSize, 28), 72);
+  let size = Math.min(Math.max(titleFontSize, 24), 72);
+  const displayTitle = title || 'Untitled';
+
+  // Auto-shrink until text fits in max 6 lines
+  let titleLines: string[] = [];
+  for (let attempt = 0; attempt < 20; attempt++) {
+    ctx.font = `bold ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+    titleLines = wrapText(ctx, displayTitle, maxTextWidth);
+    if (titleLines.length <= 6) break;
+    size = Math.max(22, size - 3);
+  }
+
+  // Final pass at chosen size
   ctx.font = `bold ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  titleLines = wrapText(ctx, displayTitle, maxTextWidth);
 
-  const titleLines = wrapText(ctx, title || 'Untitled', maxWidth);
-  const lineHeight = size * 1.25;
+  // If a single line is still too wide (very long word), shrink further
+  while (
+    titleLines.some((line) => ctx.measureText(line).width > maxTextWidth) &&
+    size > 18
+  ) {
+    size -= 2;
+    ctx.font = `bold ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+    titleLines = wrapText(ctx, displayTitle, maxTextWidth);
+  }
+
+  const lineHeight = size * 1.3;
   const titleBlockHeight = titleLines.length * lineHeight;
-  let y = height * 0.38 - titleBlockHeight / 2;
+  // Keep title in the upper-middle area, never overflowing borders
+  const maxTitleBottom = height * 0.62;
+  let startY = height * 0.36 - titleBlockHeight / 2;
+  if (startY + titleBlockHeight > maxTitleBottom) {
+    startY = maxTitleBottom - titleBlockHeight;
+  }
+  if (startY < 80) startY = 80;
 
+  let y = startY;
   for (const line of titleLines) {
-    ctx.fillText(line, width / 2, y);
+    ctx.fillText(line, width / 2, y + lineHeight / 2);
     y += lineHeight;
   }
 
   // Author
   if (author && author.trim()) {
     ctx.fillStyle = authorColor;
-    const authorSize = Math.max(20, Math.round(size * 0.55));
+    const authorSize = Math.max(18, Math.min(28, Math.round(size * 0.55)));
     ctx.font = `${authorSize}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-    const authorY = height * 0.72;
-    ctx.fillText(author.trim(), width / 2, authorY);
+
+    const authorText = author.trim();
+    // Truncate author if somehow too long
+    let authorDisplay = authorText;
+    while (
+      ctx.measureText(authorDisplay).width > maxTextWidth &&
+      authorDisplay.length > 3
+    ) {
+      authorDisplay = authorDisplay.slice(0, -2) + '…';
+    }
+
+    const authorY = Math.min(height * 0.78, height - 100);
+    ctx.fillText(authorDisplay, width / 2, authorY);
 
     // Decorative line
     ctx.strokeStyle = authorColor;
     ctx.globalAlpha = 0.4;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(width / 2 - 60, height * 0.72 - 36);
-    ctx.lineTo(width / 2 + 60, height * 0.72 - 36);
+    ctx.moveTo(width / 2 - 50, authorY - authorSize - 12);
+    ctx.lineTo(width / 2 + 50, authorY - authorSize - 12);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
@@ -101,23 +150,41 @@ function wrapText(
   text: string,
   maxWidth: number
 ): string[] {
-  const words = text.split(/\s+/);
+  // Prefer breaking on underscores and hyphens for long technical titles
+  const tokens = text.split(/(\s+|_+|-+)/).filter((t) => t.length > 0);
   const lines: string[] = [];
   let current = '';
 
-  for (const word of words) {
-    const test = current ? `${current} ${word}` : word;
+  for (const token of tokens) {
+    const test = current + token;
     if (ctx.measureText(test).width > maxWidth && current) {
-      lines.push(current);
-      current = word;
+      lines.push(current.trim());
+      current = token.trimStart();
     } else {
       current = test;
     }
   }
-  if (current) lines.push(current);
+  if (current.trim()) lines.push(current.trim());
 
-  if (lines.length > 5) {
-    return lines.slice(0, 4).concat([lines[4].slice(0, 20) + '…']);
+  // Hard-break any remaining overlong line
+  const result: string[] = [];
+  for (const line of lines) {
+    if (ctx.measureText(line).width <= maxWidth) {
+      result.push(line);
+    } else {
+      // Character-level break as last resort
+      let chunk = '';
+      for (const ch of line) {
+        if (ctx.measureText(chunk + ch).width > maxWidth && chunk) {
+          result.push(chunk);
+          chunk = ch;
+        } else {
+          chunk += ch;
+        }
+      }
+      if (chunk) result.push(chunk);
+    }
   }
-  return lines;
+
+  return result.length ? result : [text];
 }
