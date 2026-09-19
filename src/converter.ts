@@ -24,8 +24,6 @@ function escapeXml(str: string): string {
 
 /**
  * Split markdown into chapters by top-level H1 lines: exactly "# " at start of line.
- * Each H1 starts a new chapter. Content before the first H1 (if any) is ignored
- * or merged into the first chapter if there is no H1.
  */
 function splitIntoChapters(markdown: string): { title: string; bodyMarkdown: string }[] {
   const text = markdown.replace(/\r\n/g, '\n');
@@ -40,11 +38,8 @@ function splitIntoChapters(markdown: string): { title: string; bodyMarkdown: str
 
   for (const line of lines) {
     if (isH1(line)) {
-      // Save previous chapter
       if (currentTitle !== null) {
         chapters.push({ title: currentTitle, bodyLines: currentBody });
-      } else if (preamble.length > 0 && currentBody.length === 0) {
-        // No previous chapter; preamble will be attached to first chapter body later
       }
       currentTitle = line.replace(/^#\s+/, '').trim() || `Chapter ${chapters.length + 1}`;
       currentBody = [];
@@ -57,12 +52,10 @@ function splitIntoChapters(markdown: string): { title: string; bodyMarkdown: str
     }
   }
 
-  // Last chapter
   if (currentTitle !== null) {
     chapters.push({ title: currentTitle, bodyLines: currentBody });
   }
 
-  // No H1 at all → single chapter with whole file
   if (chapters.length === 0) {
     const body = text.trim();
     return [
@@ -73,7 +66,6 @@ function splitIntoChapters(markdown: string): { title: string; bodyMarkdown: str
     ];
   }
 
-  // Attach preamble (content before first H1) to the first chapter body
   if (preamble.length > 0) {
     const pre = preamble.join('\n').trim();
     if (pre) {
@@ -83,7 +75,6 @@ function splitIntoChapters(markdown: string): { title: string; bodyMarkdown: str
 
   return chapters.map((ch, i) => {
     const body = ch.bodyLines.join('\n').trim();
-    // Re-include the H1 in the chapter markdown so it appears in content
     const bodyMarkdown = `# ${ch.title}${body ? '\n\n' + body : ''}`;
     return {
       title: ch.title || `Chapter ${i + 1}`,
@@ -93,8 +84,11 @@ function splitIntoChapters(markdown: string): { title: string; bodyMarkdown: str
 }
 
 /**
- * Inject id attributes on h1 and h2 only.
- * When includeSubHeadings is true, collect H2 entries for the TOC under this chapter.
+ * Process HTML headings:
+ * - Always give h1 an id (chapter N).
+ * - If includeSubHeadings: keep h2 as real <h2 id="..."> and collect for TOC.
+ * - If NOT includeSubHeadings: convert h2+ to <p class="subheading level-N"> so
+ *   Apple Books does not list them in the Chapters panel (it scans real heading tags).
  */
 function processHtmlWithIds(
   html: string,
@@ -106,29 +100,44 @@ function processHtmlWithIds(
   let h2Counter = 0;
 
   const processed = html.replace(
-    /<(h[12])(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
+    /<(h[1-6])(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
     (match, tag: string, attrs: string = '', inner: string) => {
       const level = parseInt(tag.charAt(1), 10);
       const text = inner.replace(/<[^>]+>/g, '').trim();
       if (!text) return match;
 
-      let id: string;
+      // H1 → always real heading with chapter id
       if (level === 1) {
-        id = `chapter-${chapterIndex + 1}`;
-      } else {
-        // H2 only
+        const id = `chapter-${chapterIndex + 1}`;
+        const cleanAttrs = (attrs || '').replace(/\s*id\s*=\s*["'][^"']*["']/gi, '');
+        return `<h1${cleanAttrs} id="${id}">${inner}</h1>`;
+      }
+
+      // H2 only is used for sub-nav when toggle is on
+      if (level === 2) {
         h2Counter += 1;
-        id = `chapter-${chapterIndex + 1}-section-${h2Counter}`;
+        const id = `chapter-${chapterIndex + 1}-section-${h2Counter}`;
+
         if (includeSubHeadings) {
           subNavItems.push({
             label: text,
             href: `${chapterFileName}#${id}`,
           });
+          const cleanAttrs = (attrs || '').replace(/\s*id\s*=\s*["'][^"']*["']/gi, '');
+          return `<h2${cleanAttrs} id="${id}">${inner}</h2>`;
         }
+
+        // Toggle OFF → not a real heading tag (Apple Books won't put it in TOC)
+        return `<p class="subheading level-2">${inner}</p>`;
       }
 
-      const cleanAttrs = (attrs || '').replace(/\s*id\s*=\s*["'][^"']*["']/gi, '');
-      return `<${tag}${cleanAttrs} id="${id}">${inner}</${tag}>`;
+      // H3–H6: never in our TOC; when toggle off, demote so Books ignores them
+      if (!includeSubHeadings) {
+        return `<p class="subheading level-${level}">${inner}</p>`;
+      }
+
+      // Toggle on: keep as real heading for reading structure, but not in nav
+      return match;
     }
   );
 
@@ -151,6 +160,20 @@ const CHAPTER_STYLES = `
     h1 { font-size: 1.6em; }
     h2 { font-size: 1.35em; }
     h3 { font-size: 1.15em; }
+    /* Styled like headings but not real h* tags (so Apple Books TOC ignores them) */
+    p.subheading {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-weight: 600;
+      margin-top: 1.3em;
+      margin-bottom: 0.45em;
+      line-height: 1.25;
+      color: #111;
+    }
+    p.subheading.level-2 { font-size: 1.35em; }
+    p.subheading.level-3 { font-size: 1.15em; }
+    p.subheading.level-4 { font-size: 1.05em; }
+    p.subheading.level-5,
+    p.subheading.level-6 { font-size: 1em; }
     p { margin: 0.7em 0; }
     pre, code {
       font-family: "SF Mono", Menlo, Consolas, monospace;
@@ -206,7 +229,6 @@ export async function markdownToEpub(
   const lang = options.language || 'en';
   const includeSubHeadings = !!options.includeSubHeadings;
 
-  // Always split by H1 — independent of the sub-headings toggle
   const rawChapters = splitIntoChapters(markdown);
 
   const chapters: ChapterData[] = [];
@@ -218,7 +240,6 @@ export async function markdownToEpub(
 
     let html = await marked.parse(raw.bodyMarkdown);
 
-    // XHTML-friendly void elements
     html = html
       .replace(/<br\s*>/gi, '<br/>')
       .replace(/<hr\s*>/gi, '<hr/>')
@@ -255,7 +276,6 @@ ${processedHtml}
       id: chapterId,
     });
 
-    // TOC entry for this chapter; optionally nest ## under it
     tocNav.push({
       label: chapterTitle,
       href: fileName,
