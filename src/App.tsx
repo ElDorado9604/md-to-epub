@@ -216,7 +216,7 @@ export default function App() {
       >
         <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.45 }}>
           Chapters are created from <code style={{ fontSize: 12 }}># Heading</code> lines.
-          Sub-headings (<code style={{ fontSize: 12 }}>##</code>, <code style={{ fontSize: 12 }}>###</code>) can be added to the table of contents using the toggle.
+          Sub-headings (<code style={{ fontSize: 12 }}>##</code> only) can be added to the table of contents using the toggle.
         </p>
         <label
           style={{
@@ -233,7 +233,7 @@ export default function App() {
             onChange={(e) => setIncludeSubHeadings(e.target.checked)}
             style={{ width: 16, height: 16 }}
           />
-          Include sub-headings in navigation
+          Include sub-headings (##) in navigation
         </label>
       </div>
 
