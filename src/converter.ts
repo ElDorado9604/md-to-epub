@@ -22,105 +22,117 @@ function escapeXml(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
-/** Split markdown into chapters by top-level H1 (# heading) */
-function splitIntoChapters(markdown: string): { title: string; markdown: string }[] {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  const chapters: { title: string; markdown: string }[] = [];
-  let currentTitle = '';
-  let currentLines: string[] = [];
+/**
+ * Split markdown into chapters by top-level H1 lines: exactly "# " at start of line.
+ * Each H1 starts a new chapter. Content before the first H1 (if any) is ignored
+ * or merged into the first chapter if there is no H1.
+ */
+function splitIntoChapters(markdown: string): { title: string; bodyMarkdown: string }[] {
+  const text = markdown.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
 
-  const flush = () => {
-    const body = currentLines.join('\n').trim();
-    if (currentTitle || body) {
-      chapters.push({
-        title: currentTitle || `Chapter ${chapters.length + 1}`,
-        markdown: body ? (currentTitle ? `# ${currentTitle}\n\n${body}` : body) : `# ${currentTitle}`,
-      });
-    }
-  };
+  const chapters: { title: string; bodyLines: string[] }[] = [];
+  let currentTitle: string | null = null;
+  let currentBody: string[] = [];
+  let preamble: string[] = [];
+
+  const isH1 = (line: string) => /^#\s+/.test(line) && !/^##/.test(line);
 
   for (const line of lines) {
-    if (/^# /.test(line) && !/^## /.test(line)) {
-      // New H1 chapter
-      if (currentTitle || currentLines.length > 0) {
-        flush();
+    if (isH1(line)) {
+      // Save previous chapter
+      if (currentTitle !== null) {
+        chapters.push({ title: currentTitle, bodyLines: currentBody });
+      } else if (preamble.length > 0 && currentBody.length === 0) {
+        // No previous chapter; preamble will be attached to first chapter body later
       }
-      currentTitle = line.replace(/^#\s+/, '').trim();
-      currentLines = [];
+      currentTitle = line.replace(/^#\s+/, '').trim() || `Chapter ${chapters.length + 1}`;
+      currentBody = [];
     } else {
-      currentLines.push(line);
+      if (currentTitle === null) {
+        preamble.push(line);
+      } else {
+        currentBody.push(line);
+      }
     }
   }
-  flush();
 
-  // If no H1 found at all, treat whole file as one chapter
-  if (chapters.length === 0) {
-    return [{ title: 'Chapter 1', markdown: markdown.trim() || '# Chapter 1' }];
+  // Last chapter
+  if (currentTitle !== null) {
+    chapters.push({ title: currentTitle, bodyLines: currentBody });
   }
-  return chapters;
+
+  // No H1 at all → single chapter with whole file
+  if (chapters.length === 0) {
+    const body = text.trim();
+    return [
+      {
+        title: 'Chapter 1',
+        bodyMarkdown: body || '# Chapter 1',
+      },
+    ];
+  }
+
+  // Attach preamble (content before first H1) to the first chapter body
+  if (preamble.length > 0) {
+    const pre = preamble.join('\n').trim();
+    if (pre) {
+      chapters[0].bodyLines = [...preamble, '', ...chapters[0].bodyLines];
+    }
+  }
+
+  return chapters.map((ch, i) => {
+    const body = ch.bodyLines.join('\n').trim();
+    // Re-include the H1 in the chapter markdown so it appears in content
+    const bodyMarkdown = `# ${ch.title}${body ? '\n\n' + body : ''}`;
+    return {
+      title: ch.title || `Chapter ${i + 1}`,
+      bodyMarkdown,
+    };
+  });
 }
 
-/** Add id attributes to h1/h2/h3 and extract nav structure */
+/**
+ * Inject id attributes on h1 and h2 only.
+ * When includeSubHeadings is true, collect H2 entries for the TOC under this chapter.
+ */
 function processHtmlWithIds(
   html: string,
   chapterIndex: number,
   chapterFileName: string,
   includeSubHeadings: boolean
-): { html: string; navItems: NavItem[] } {
-  const navItems: NavItem[] = [];
+): { html: string; subNavItems: NavItem[] } {
+  const subNavItems: NavItem[] = [];
   let h2Counter = 0;
-  let h3Counter = 0;
-  let currentH2: NavItem | null = null;
 
-  // Match opening heading tags and inject ids
   const processed = html.replace(
-    /<(h[1-3])(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
-    (_match, tag: string, attrs: string = '', inner: string) => {
+    /<(h[12])(\s[^>]*)?>([\s\S]*?)<\/\1>/gi,
+    (match, tag: string, attrs: string = '', inner: string) => {
       const level = parseInt(tag.charAt(1), 10);
       const text = inner.replace(/<[^>]+>/g, '').trim();
-      if (!text) return _match;
+      if (!text) return match;
 
-      let id = '';
+      let id: string;
       if (level === 1) {
         id = `chapter-${chapterIndex + 1}`;
-        // H1 is the chapter itself – nav entry is added by caller
-      } else if (level === 2) {
+      } else {
+        // H2 only
         h2Counter += 1;
-        h3Counter = 0;
-        id = `chapter-${chapterIndex + 1}-h2-${h2Counter}`;
+        id = `chapter-${chapterIndex + 1}-section-${h2Counter}`;
         if (includeSubHeadings) {
-          currentH2 = {
-            label: text,
-            href: `${chapterFileName}#${id}`,
-            children: [],
-          };
-          navItems.push(currentH2);
-        }
-      } else if (level === 3) {
-        h3Counter += 1;
-        id = `chapter-${chapterIndex + 1}-h2-${h2Counter || 1}-h3-${h3Counter}`;
-        if (includeSubHeadings && currentH2) {
-          currentH2.children = currentH2.children || [];
-          currentH2.children.push({
-            label: text,
-            href: `${chapterFileName}#${id}`,
-          });
-        } else if (includeSubHeadings) {
-          // Orphan H3 under chapter
-          navItems.push({
+          subNavItems.push({
             label: text,
             href: `${chapterFileName}#${id}`,
           });
         }
       }
 
-      // Preserve existing attributes, ensure id
-      const cleanAttrs = (attrs || '').replace(/\s*id\s*=\s*["'][^"']*["']/i, '');
+      const cleanAttrs = (attrs || '').replace(/\s*id\s*=\s*["'][^"']*["']/gi, '');
       return `<${tag}${cleanAttrs} id="${id}">${inner}</${tag}>`;
     }
   );
 
-  return { html: processed, navItems };
+  return { html: processed, subNavItems };
 }
 
 const CHAPTER_STYLES = `
@@ -193,6 +205,8 @@ export async function markdownToEpub(
 
   const lang = options.language || 'en';
   const includeSubHeadings = !!options.includeSubHeadings;
+
+  // Always split by H1 — independent of the sub-headings toggle
   const rawChapters = splitIntoChapters(markdown);
 
   const chapters: ChapterData[] = [];
@@ -201,15 +215,16 @@ export async function markdownToEpub(
   for (let i = 0; i < rawChapters.length; i++) {
     const raw = rawChapters[i];
     const fileName = `chapter${i + 1}.xhtml`;
-    let html = await marked.parse(raw.markdown);
 
-    // XHTML-friendly cleanup
+    let html = await marked.parse(raw.bodyMarkdown);
+
+    // XHTML-friendly void elements
     html = html
-      .replace(/<br>/g, '<br/>')
-      .replace(/<hr>/g, '<hr/>')
-      .replace(/<img([^>]*)>/g, '<img$1/>');
+      .replace(/<br\s*>/gi, '<br/>')
+      .replace(/<hr\s*>/gi, '<hr/>')
+      .replace(/<img([^>]*?)(?<!\/)>/gi, '<img$1/>');
 
-    const { html: processedHtml, navItems } = processHtmlWithIds(
+    const { html: processedHtml, subNavItems } = processHtmlWithIds(
       html,
       i,
       fileName,
@@ -240,10 +255,12 @@ ${processedHtml}
       id: chapterId,
     });
 
+    // TOC entry for this chapter; optionally nest ## under it
     tocNav.push({
       label: chapterTitle,
       href: fileName,
-      children: includeSubHeadings && navItems.length > 0 ? navItems : undefined,
+      children:
+        includeSubHeadings && subNavItems.length > 0 ? subNavItems : undefined,
     });
   }
 
