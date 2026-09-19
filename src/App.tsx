@@ -112,9 +112,49 @@ export default function App() {
   const colorRowStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 14,
   };
+
+  // Visible color swatch wrapper so white colors are still obvious
+  const ColorSwatch = ({
+    value,
+    onChange,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+  }) => (
+    <label
+      style={{
+        position: 'relative',
+        width: 40,
+        height: 32,
+        borderRadius: 6,
+        border: '2px solid #ccc',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        background: value,
+        flexShrink: 0,
+        boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.1)',
+      }}
+    >
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0,
+          cursor: 'pointer',
+          border: 'none',
+          padding: 0,
+        }}
+      />
+    </label>
+  );
 
   return (
     <div
@@ -163,37 +203,22 @@ export default function App() {
         />
       </div>
 
-      {/* Colors – custom only */}
+      {/* Colors */}
       <div style={{ marginBottom: 16 }}>
         <label style={{ ...labelStyle, marginBottom: 10 }}>Colors</label>
 
         <div style={colorRowStyle}>
-          <input
-            type="color"
-            value={coverColor}
-            onChange={(e) => setCoverColor(e.target.value)}
-            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer', padding: 0 }}
-          />
+          <ColorSwatch value={coverColor} onChange={setCoverColor} />
           <span style={{ fontSize: 14 }}>Cover background</span>
         </div>
 
         <div style={colorRowStyle}>
-          <input
-            type="color"
-            value={titleColor}
-            onChange={(e) => setTitleColor(e.target.value)}
-            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer', padding: 0 }}
-          />
+          <ColorSwatch value={titleColor} onChange={setTitleColor} />
           <span style={{ fontSize: 14 }}>Title text</span>
         </div>
 
         <div style={colorRowStyle}>
-          <input
-            type="color"
-            value={authorColor}
-            onChange={(e) => setAuthorColor(e.target.value)}
-            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer', padding: 0 }}
-          />
+          <ColorSwatch value={authorColor} onChange={setAuthorColor} />
           <span style={{ fontSize: 14 }}>Author text</span>
         </div>
       </div>
