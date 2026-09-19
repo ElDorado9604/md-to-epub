@@ -22,16 +22,6 @@ function escapeXml(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 60) || 'section';
-}
-
 /** Split markdown into chapters by top-level H1 (# heading) */
 function splitIntoChapters(markdown: string): { title: string; markdown: string }[] {
   const lines = markdown.replace(/\r\n/g, '\n').split('\n');
