@@ -1,11 +1,24 @@
 import JSZip from 'jszip';
 
+export interface NavItem {
+  label: string;
+  href: string;
+  children?: NavItem[];
+}
+
+export interface ChapterData {
+  title: string;
+  fileName: string;
+  content: string;
+  id: string;
+}
+
 export interface EpubData {
   title: string;
   author?: string;
   language?: string;
-  chapterFileName: string;
-  chapterContent: string;
+  chapters: ChapterData[];
+  tocNav: NavItem[];
   coverImage?: Blob;
 }
 
@@ -21,10 +34,24 @@ function escapeXml(str: string): string {
 function generateUuid(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function renderNavList(items: NavItem[]): string {
+  if (!items.length) return '';
+  const lis = items
+    .map((item) => {
+      const children =
+        item.children && item.children.length > 0
+          ? `\n${renderNavList(item.children)}`
+          : '';
+      return `      <li><a href="${escapeXml(item.href)}">${escapeXml(item.label)}</a>${children}</li>`;
+    })
+    .join('\n');
+  return `    <ol>\n${lis}\n    </ol>`;
 }
 
 export async function buildEpubBlob(data: EpubData): Promise<Blob> {
@@ -33,7 +60,7 @@ export async function buildEpubBlob(data: EpubData): Promise<Blob> {
   const lang = data.language || 'en';
   const title = escapeXml(data.title);
   const author = data.author ? escapeXml(data.author) : undefined;
-  const chapterFileName = data.chapterFileName;
+  const chapters = data.chapters;
 
   // 1. mimetype MUST be first and uncompressed
   zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
@@ -49,14 +76,25 @@ export async function buildEpubBlob(data: EpubData): Promise<Blob> {
 </container>`
   );
 
-  // Cover image (if provided)
+  // Cover image
   const hasCover = !!data.coverImage;
   if (hasCover && data.coverImage) {
     const coverBuffer = await data.coverImage.arrayBuffer();
     zip.file('OEBPS/cover.png', coverBuffer);
   }
 
-  // 3. content.opf (EPUB 3)
+  // Manifest + spine for chapters
+  const chapterManifest = chapters
+    .map(
+      (ch, i) =>
+        `    <item id="chapter${i + 1}" href="${ch.fileName}" media-type="application/xhtml+xml"/>`
+    )
+    .join('\n');
+
+  const chapterSpine = chapters
+    .map((_ch, i) => `    <itemref idref="chapter${i + 1}"/>`)
+    .join('\n');
+
   const creatorMeta = author
     ? `    <dc:creator id="creator">${author}</dc:creator>
     <meta refines="#creator" property="role" scheme="marc:relators">aut</meta>
@@ -77,6 +115,7 @@ export async function buildEpubBlob(data: EpubData): Promise<Blob> {
   const coverSpine = hasCover ? `    <itemref idref="cover" linear="yes"/>
 ` : '';
 
+  // 3. content.opf
   zip.file(
     'OEBPS/content.opf',
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -92,16 +131,16 @@ ${creatorMeta}${coverMeta}    <meta property="dcterms:modified">${new Date().toI
   </metadata>
   <manifest>
 ${coverManifest}    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="chapter1" href="${chapterFileName}" media-type="application/xhtml+xml"/>
+${chapterManifest}
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
   </manifest>
   <spine toc="ncx">
-${coverSpine}    <itemref idref="chapter1"/>
+${coverSpine}${chapterSpine}
   </spine>
 </package>`
   );
 
-  // Cover page XHTML (shows the image)
+  // Cover page
   if (hasCover) {
     zip.file(
       'OEBPS/cover.xhtml',
@@ -123,7 +162,8 @@ ${coverSpine}    <itemref idref="chapter1"/>
     );
   }
 
-  // 4. Navigation document
+  // 4. nav.xhtml (EPUB 3 navigation)
+  const navList = renderNavList(data.tocNav);
   zip.file(
     'OEBPS/nav.xhtml',
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -138,18 +178,29 @@ ${coverSpine}    <itemref idref="chapter1"/>
 <body>
   <nav epub:type="toc" id="toc">
     <h1>Table of Contents</h1>
-    <ol>
-      <li><a href="${chapterFileName}">${title}</a></li>
-    </ol>
+${navList}
   </nav>
 </body>
 </html>`
   );
 
-  // 5. Chapter XHTML
-  zip.file(`OEBPS/${chapterFileName}`, data.chapterContent);
+  // 5. Chapter XHTML files
+  for (const ch of chapters) {
+    zip.file(`OEBPS/${ch.fileName}`, ch.content);
+  }
 
-  // 6. toc.ncx
+  // 6. toc.ncx (top-level chapters only for simplicity)
+  const ncxPoints = chapters
+    .map(
+      (ch, i) => `    <navPoint id="navpoint-${i + 1}" playOrder="${i + 1}">
+      <navLabel>
+        <text>${escapeXml(ch.title)}</text>
+      </navLabel>
+      <content src="${ch.fileName}"/>
+    </navPoint>`
+    )
+    .join('\n');
+
   zip.file(
     'OEBPS/toc.ncx',
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -164,12 +215,7 @@ ${coverSpine}    <itemref idref="chapter1"/>
     <text>${title}</text>
   </docTitle>
   <navMap>
-    <navPoint id="navpoint-1" playOrder="1">
-      <navLabel>
-        <text>${title}</text>
-      </navLabel>
-      <content src="${chapterFileName}"/>
-    </navPoint>
+${ncxPoints}
   </navMap>
 </ncx>`
   );

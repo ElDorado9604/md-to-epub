@@ -10,6 +10,7 @@ export default function App() {
   const [titleColor, setTitleColor] = useState('#ffffff');
   const [authorColor, setAuthorColor] = useState('#ffffff');
   const [titleFontSize, setTitleFontSize] = useState(48);
+  const [includeSubHeadings, setIncludeSubHeadings] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState('book.epub');
   const [converting, setConverting] = useState(false);
@@ -79,6 +80,7 @@ export default function App() {
         titleColor,
         authorColor,
         titleFontSize,
+        includeSubHeadings,
       });
 
       const url = URL.createObjectURL(blob);
@@ -116,7 +118,6 @@ export default function App() {
     marginBottom: 14,
   };
 
-  // Visible color swatch wrapper so white colors are still obvious
   const ColorSwatch = ({
     value,
     onChange,
@@ -201,6 +202,39 @@ export default function App() {
           placeholder="Author name"
           style={inputStyle}
         />
+      </div>
+
+      {/* Chapters hint + sub-headings toggle */}
+      <div
+        style={{
+          marginBottom: 16,
+          padding: '12px 14px',
+          background: '#f8fafc',
+          borderRadius: 8,
+          border: '1px solid #e2e8f0',
+        }}
+      >
+        <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.45 }}>
+          Chapters are created from <code style={{ fontSize: 12 }}># Heading</code> lines.
+          Sub-headings (<code style={{ fontSize: 12 }}>##</code>, <code style={{ fontSize: 12 }}>###</code>) can be added to the table of contents using the toggle.
+        </p>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 14,
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={includeSubHeadings}
+            onChange={(e) => setIncludeSubHeadings(e.target.checked)}
+            style={{ width: 16, height: 16 }}
+          />
+          Include sub-headings in navigation
+        </label>
       </div>
 
       {/* Colors */}
