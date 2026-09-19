@@ -2,17 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { markdownToEpub } from './converter';
 import { generateCoverImage } from './cover';
 
-const COVER_PRESETS = [
-  { name: 'Green', value: '#1a5c3a' },
-  { name: 'Blue', value: '#1e3a5f' },
-  { name: 'Purple', value: '#4a1d6a' },
-  { name: 'Red', value: '#6b1e1e' },
-  { name: 'Teal', value: '#0d4f4f' },
-  { name: 'Slate', value: '#2d3748' },
-  { name: 'Yellow', value: '#b8860b' },
-  { name: 'Black', value: '#1a1a1a' },
-];
-
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -63,7 +52,6 @@ export default function App() {
     }
   };
 
-  // Refresh preview when options change while open
   useEffect(() => {
     if (!showPreview) return;
     const t = setTimeout(() => {
@@ -121,6 +109,13 @@ export default function App() {
     boxSizing: 'border-box',
   };
 
+  const colorRowStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  };
+
   return (
     <div
       style={{
@@ -168,66 +163,38 @@ export default function App() {
         />
       </div>
 
-      {/* Cover color */}
+      {/* Colors – custom only */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ ...labelStyle, marginBottom: 8 }}>Cover color</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {COVER_PRESETS.map((preset) => (
-            <button
-              key={preset.value}
-              type="button"
-              title={preset.name}
-              onClick={() => setCoverColor(preset.value)}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                background: preset.value,
-                border:
-                  coverColor === preset.value
-                    ? '3px solid #2563eb'
-                    : '2px solid #ddd',
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            />
-          ))}
+        <label style={{ ...labelStyle, marginBottom: 10 }}>Colors</label>
+
+        <div style={colorRowStyle}>
           <input
             type="color"
             value={coverColor}
             onChange={(e) => setCoverColor(e.target.value)}
-            title="Custom cover color"
-            style={{
-              width: 32,
-              height: 32,
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-              background: 'transparent',
-            }}
+            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer', padding: 0 }}
           />
+          <span style={{ fontSize: 14 }}>Cover background</span>
         </div>
-      </div>
 
-      {/* Title & Author text colors */}
-      <div style={{ marginBottom: 16, display: 'flex', gap: 24 }}>
-        <div>
-          <label style={labelStyle}>Title color</label>
+        <div style={colorRowStyle}>
           <input
             type="color"
             value={titleColor}
             onChange={(e) => setTitleColor(e.target.value)}
-            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer' }}
+            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer', padding: 0 }}
           />
+          <span style={{ fontSize: 14 }}>Title text</span>
         </div>
-        <div>
-          <label style={labelStyle}>Author color</label>
+
+        <div style={colorRowStyle}>
           <input
             type="color"
             value={authorColor}
             onChange={(e) => setAuthorColor(e.target.value)}
-            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer' }}
+            style={{ width: 40, height: 32, border: 'none', cursor: 'pointer', padding: 0 }}
           />
+          <span style={{ fontSize: 14 }}>Author text</span>
         </div>
       </div>
 
